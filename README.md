@@ -18,64 +18,104 @@ entry in `actions` performs exactly one operation:
 Actions run sequentially in YAML order. Every output is immediately available as
 an input to later actions.
 
-## Install and build
+## Standalone executable
+
+From this repository, after the binaries exist ([Install from source](#install-from-source)):
 
 ```bash
-npm install
-npm run build
+./scripts/install-sfdata.sh
 ```
 
-## Offline YAML generator
-
-Build the standalone configuration generator:
-
-```bash
-npm run build:web
+```powershell
+.\scripts\install-sfdata.ps1
 ```
 
-Open `dist/web/execconf_generator.html` directly in a browser. It is one offline
-HTML file with no CDN or sibling assets. The generator provides:
-
-- typed forms for GET, INSERT, UPDATE, UPSERT, DELETE, and TRANSFORM
-- CSV/Excel header discovery with opt-in field translations
-- sheet-aware action pickers and write-field suggestions
-- an offline, syntax-highlighted CommonJS transform editor with load, template,
-direct-save, and download support
-- live required-field and canonical Zod validation
-- ordered action cards with drag-and-drop reordering
-- concise live YAML preview, copy, and save-to-file with download fallback
-- validated YAML import (comments and formatting are normalized)
-- automatic local draft persistence and confirmed reset
-
-By default the generator only authors configuration. It can also **run the
-pipeline directly** when launched through the UI daemon (see below).
-
-## Run from the generator (`--ui`)
-
-Start the built CLI in UI mode from the folder that holds your inputs:
+On a machine that only has the binary, pass its path (or place the binary next to the script):
 
 ```bash
-sfdata --ui                 # serves the generator on http://localhost:3111
+./install-sfdata.sh /path/to/sf-data-macos-arm64
+```
+
+```powershell
+.\install-sfdata.ps1 C:\path\to\sf-data-win-x64.exe
+```
+
+Then, in a new terminal, from any folder:
+
+```bash
+sfdata --help
+```
+
+`mlr` (Miller actions) and `sf` (Salesforce CLI org auth) are separate installs.
+
+## Start a project
+
+From an empty folder (or any folder you want to use as the project):
+
+```bash
+sfdata init
+```
+
+That creates, only when each path is missing:
+
+- `input/` and `output/`
+- `conf.yaml` and `scripts.js`
+- `AI_GUIDE.md`
+- `skills/build-config/` and `skills/build-script/`
+
+Running `init` again skips anything that already exists, so hand-edited files are
+left as they are. Put CSV and Excel inputs in `input/`, then start the builder
+from that same folder:
+
+```bash
+sfdata --ui
+```
+
+## Configuration builder (`--ui`)
+
+Start the builder from the project folder. It is served by a local daemon; opening
+the HTML file directly does not work.
+
+```bash
+sfdata --ui                 # http://localhost:3111
 sfdata --ui --port 4000     # or PORT=4000 sfdata --ui
 ```
 
 The daemon uses **the folder where the command was executed** as its working
-folder — it reads inputs, writes `conf.yaml`/`scripts.js`, and produces `output/`
-there. Run it from the project folder that holds your inputs.
+folder. During development, `npm run ui` builds first and then starts the daemon.
+`npm run` reports the repo root as the process directory, so the daemon falls
+back to `INIT_CWD` — the folder you invoked `npm run ui` from. Open the printed
+`http://localhost:<port>` URL. The page is same-origin with the daemon, so no
+CORS setup is needed. `--ui` does not require `--confFile`; only `--port` matters.
+`init` is the other mode that does not require `--confFile`. Any other invocation
+is a one-shot pipeline run.
 
-If that folder already contains a `conf.yaml` (and optionally `scripts.js`), the
-generator loads it automatically on open, so you continue editing the on-disk
-configuration. The on-disk files take precedence over any autosaved browser draft.
+If the folder already contains `conf.yaml` (and optionally `scripts.js`), the
+builder loads them on open. Those files take precedence over any autosaved
+browser draft.
 
-During development: `npm run ui` (builds the CLI + generator, then starts the
-daemon). `npm run` reports the repo root as the process directory, so the daemon
-falls back to `INIT_CWD` — the folder you invoked `npm run ui` from — for its
-working folder. Open the printed `http://localhost:<port>` in a browser — the served page
-is same-origin with the daemon, so no CORS setup is needed. Without `--ui` the CLI
-behaves exactly as before (a one-shot pipeline run); in `--ui` mode only `--port`
-matters and `--confFile` is not required.
+The builder has five tabs:
 
-Open the **Run** tab in the generator to execute the current configuration:
+- **App** — processing type, API version, bulk and cleanup settings.
+- **Sheets** — header discovery from the files already in `input/`, plus **Load
+  CSV / Excel** to read headers from files you pick. Translation of a header to
+  a Salesforce API name is opt-in.
+- **Actions** — typed forms for every action (`get`, `insert`, `update`,
+  `upsert`, `delete`, `transform`, `merge`, `check`, `miller`, `table`, `sql`),
+  sheet-aware pickers, drag-and-drop reordering, and a syntax-highlighted
+  CommonJS editor for `transform` and `check` functions. **Reset to template**
+  fills in the function for the selected sheet.
+- **Diagram** — a left-to-right timeline of sheets and actions (Salesforce reads
+  and writes, `transform`, `merge`, `check`, and `miller`). Pan, zoom, and click
+  a sheet or arrow for a read-only detail panel.
+- **Run** — execute the pipeline in this folder.
+
+**Save** writes `conf.yaml` into the working folder, and writes `scripts.js` when
+the pipeline has a `transform` or `check` action. Validation uses the same schema
+as the CLI. The browser draft is saved locally; **Reset** asks for confirmation
+before clearing it.
+
+Open the **Run** tab to execute the current configuration:
 
 - Authentication is resolved from the local environment, in order:
   1. a usable credential in a `.env` file in the daemon's folder,
@@ -86,19 +126,28 @@ Open the **Run** tab in the generator to execute the current configuration:
      browser session and are never written to disk.
 - Optional **From / To** pickers run a partial range (same as `--fromTask` /
   `--toTask`).
-- On Run, the daemon writes `conf.yaml` (and `scripts.js` only when a transform
-  action exists) into its folder and runs the CLI with `--inputFolder .
-  --outputFolder ./output`, exactly as if you had saved the files and run the CLI
-  by hand. Only one run executes at a time.
-- The generator streams the CLI's six-phase log live, then shows a success/failure
-  summary and the list of produced output files with row counts. Output CSVs stay
-  on disk in the daemon's `output` folder (they can be large, so their contents are
-  not sent back to the browser).
+- On Run, the daemon writes `conf.yaml` (and `scripts.js` when a `transform` or
+  `check` action exists) and runs the CLI with `--inputFolder ./input
+  --outputFolder ./output`. Place inputs in `input/`. Results are written to
+  `output/`. Only one run executes at a time; **Stop** cancels the run in progress.
+- The builder streams the CLI's six-phase log live, then shows a success, stopped,
+  or failure summary and the list of produced output files with row counts. Output
+  CSVs stay on disk in `output/` (they can be large, so their contents are not
+  sent back to the browser).
 
-The Node CLI uses environment credentials when configured; otherwise it obtains
-credentials from the default org currently selected in Salesforce CLI.
+## Run a pipeline
 
-Run from TypeScript:
+With `sfdata` on `PATH`:
+
+```bash
+sfdata \
+  --confFile examples/02-insert-contacts/conf.yaml \
+  --scriptFile examples/02-insert-contacts/scripts.js \
+  --csvFiles examples/02-insert-contacts/contacts.csv \
+  --outputFolder output
+```
+
+The same command from a source checkout, without installing the binary:
 
 ```bash
 npx ts-node src/Index.ts \
@@ -117,14 +166,16 @@ name (case-insensitive) or a 1-based YAML index. The range is inclusive.
 
 ```bash
 # From "Insert Contacts" through the last action
-npx ts-node src/Index.ts -c conf.yaml --fromTask "Insert Contacts"
+sfdata -c conf.yaml --fromTask "Insert Contacts"
 
 # From the first action through "Get Accounts"
-npx ts-node src/Index.ts -c conf.yaml --toTask "Get Accounts"
+sfdata -c conf.yaml --toTask "Get Accounts"
 
 # A middle slice, by name or by index
-npx ts-node src/Index.ts -c conf.yaml --fromTask 2 --toTask "Insert Contacts"
+sfdata -c conf.yaml --fromTask 2 --toTask "Insert Contacts"
 ```
+
+From a source checkout, the same flags work with `npx ts-node src/Index.ts` in place of `sfdata`.
 
 If only `--toTask` is set, execution starts at the first action. If only
 `--fromTask` is set, execution continues through the last action. Skipped
@@ -139,10 +190,16 @@ Excel file in a folder (non-recursively). It can be combined with `--csvFiles`
 and `--excelFile`; all resolved inputs are merged.
 
 ```bash
-npx ts-node src/Index.ts \
+sfdata \
   --confFile examples/02-insert-contacts/conf.yaml \
   --inputFolder examples/02-insert-contacts \
   --outputFolder output
+```
+
+A project created with `sfdata init` uses the same layout the builder runs:
+
+```bash
+sfdata -c conf.yaml -s scripts.js -i ./input -o ./output
 ```
 
 Sheet names come from file names (worksheet names for Excel), so two inputs that
@@ -422,13 +479,12 @@ module.exports = {
 
 The shared file is loaded once and may `require()` sibling modules to share logic.
 
-In the HTML generator, each transform action edits its own function in a
-syntax-highlighted editor; **Reset to template** replaces it with the required
-CommonJS function documenting fields from the selected input sheet. **Download**
-writes both `conf.yaml` and the shared script file. Re-importing is a single step:
-choose the `conf.yaml` and its shared script together and every transform's code is
-preloaded automatically — matched to each action by name. The edited source is kept
-in the local browser draft and is deliberately not embedded in YAML.
+In the configuration builder, each transform action edits its own function in a
+syntax-highlighted editor. **Reset to template** replaces it with the required
+CommonJS function documenting fields from the selected input sheet. **Save** writes
+`conf.yaml` and the shared `scripts.js`; opening the builder in a folder that
+already has those files reloads each transform by action name. The edited source
+is kept in the local browser draft and is deliberately not embedded in YAML.
 
 The script receives a mutable dictionary whose keys are mapped/API field names.
 It can add, change, or delete fields. Return the full row (the same object or a
@@ -622,3 +678,30 @@ The [ai/skills/](ai/skills/) folder bundles two Claude Code skills:
 Claude Code only auto-discovers skills under `.claude/skills/`, so these are not loaded by
 default. To use them, either start Claude Code with `--add-dir ai/skills`, or copy the
 skill folders into `.claude/skills/`.
+
+## Install from source
+
+```bash
+npm install
+npm run build
+```
+
+Build the standalone binaries, then install the one for this machine:
+
+```bash
+npm run build:executables
+./scripts/install-sfdata.sh
+```
+
+```powershell
+npm run build:executables
+.\scripts\install-sfdata.ps1
+```
+
+To use the Node build instead of the binary:
+
+```bash
+npm link
+```
+
+`npm run ui` builds the CLI and the configuration builder, then starts the builder.
