@@ -89,12 +89,30 @@ function resolveInputFiles(options: {
 }
 
 /**
+ * Reads the app version from package.json one directory above the compiled entry.
+ * That is the repo root for both src/ (ts-node) and dist/ (tsc and pkg).
+ */
+function readAppVersion(): string {
+  const packagePath = path.join(__dirname, '..', 'package.json');
+  const parsed = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { version?: string };
+  return parsed.version ?? '0.0.0';
+}
+
+/**
+ * `-v` is already `--csvFiles`, so version is only `-V` / `--version`.
+ */
+function isVersionRequest(argv: string[]): boolean {
+  return argv.includes('--version') || argv.includes('-V');
+}
+
+/**
  * Starts the UI daemon instead of running a one-shot pipeline. Only `--ui` and
  * `--port` are meaningful here; pipeline flags are ignored because the browser
  * supplies the configuration, inputs, and auth per run.
  */
 function runUiMode(): void {
   const program = new Command()
+    .version(readAppVersion(), '-V, --version')
     .option('--ui', 'Start the browser UI daemon instead of running a pipeline')
     .option('-p, --port <number>', 'Port for the UI daemon (default 3111)')
     .allowUnknownOption(true)
@@ -146,6 +164,11 @@ function runInitMode(): void {
 }
 
 async function main(): Promise<void> {
+  // Before `--ui` and `init`, so those modes also honor the version flag.
+  if (isVersionRequest(process.argv)) {
+    console.log(readAppVersion());
+    return;
+  }
   dotenv.config();
   // `--ui` switches to daemon mode, where --confFile is not required.
   if (process.argv.includes('--ui')) {
@@ -160,6 +183,7 @@ async function main(): Promise<void> {
     return;
   }
   const program = new Command()
+    .version(readAppVersion(), '-V, --version')
     .requiredOption('-c, --confFile <path>', 'Path to the YAML configuration file')
     .option('-e, --excelFile <path>', 'Path to an Excel input file')
     .option('-o, --outputFolder <path>', 'Folder where output CSV files are written', './')
