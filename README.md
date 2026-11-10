@@ -3,6 +3,8 @@
 `sf-data` runs ordered data pipelines between CSV/Excel sheets and Salesforce. Each
 entry in `actions` performs exactly one operation:
 
+![Pipeline actions for Accounts, Contacts, and Opportunities](docs/images/actions.png)
+
 - `get`: run SOQL and create/replace a CSV sheet
 - `insert`: insert CSV rows
 - `update`: update rows by `Id`
@@ -118,6 +120,26 @@ The builder has five tabs:
   and writes, `transform`, `merge`, `check`, and `miller`). Pan, zoom, and click
   a sheet or arrow for a read-only detail panel.
 - **Run** — execute the pipeline in this folder.
+
+Application settings: processing type and API version.
+
+![Application settings](docs/images/app.png)
+
+Sheet mappings from input columns to Salesforce API names.
+
+![Sheet mappings for Contacts and Opportunities](docs/images/sheets.png)
+
+Ordered actions for Accounts, Contacts, and Opportunities.
+
+![Pipeline actions](docs/images/actions.png)
+
+The same pipeline as a diagram. Pan, zoom, and select a sheet or arrow for details.
+
+![Pipeline diagram](docs/images/diagram.png)
+
+Run the pipeline in this folder. Authentication can be a pasted token, and From / To limit the action range.
+
+![Run pipeline](docs/images/run.png)
 
 **Save** writes `conf.yaml` into the working folder, and writes `scripts.js` when
 the pipeline has a `transform` or `check` action. Validation uses the same schema
