@@ -72,4 +72,33 @@ describe('SalesforceBulkApiLoader query results', () => {
     expect(logs.some(line => line.includes('creating Bulk API v2 query job'))).toBe(true);
     expect(logs.some(line => line.includes('complete'))).toBe(true);
   });
+
+  it('parses a one-column result, keeping a quoted comma inside the value', async () => {
+    post.mockResolvedValue({ data: { id: '750yy' } });
+    get.mockImplementation((url: string) => {
+      if (url === '/jobs/query/750yy') {
+        return Promise.resolve({
+          data: { id: '750yy', state: 'JobComplete', numberRecordsProcessed: 3, numberRecordsFailed: 0 },
+        });
+      }
+      if (url === '/jobs/query/750yy/results') {
+        return Promise.resolve({
+          data: 'Id\n001\n002\n"Doe, Jane"\n',
+          headers: { 'sforce-locator': 'null' },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    const loader = new SalesforceBulkApiLoader(new AppConfiguration('bulk', null, null, '58.0'));
+    const sheet = await loader.query(
+      'https://example.my.salesforce.com',
+      'token',
+      'SELECT Id FROM Account',
+      'Accounts'
+    );
+
+    expect(sheet.fieldNames).toEqual(['Id']);
+    expect(sheet.data).toEqual([['001'], ['002'], ['Doe, Jane']]);
+  });
 });

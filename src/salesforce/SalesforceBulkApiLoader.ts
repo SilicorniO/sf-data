@@ -116,7 +116,7 @@ export class SalesforceBulkApiLoader implements SalesforceDataLoader {
       const response = await client.get(`/jobs/ingest/${jobId}/successfulResults`, {
         headers: { Accept: 'text/csv' },
       });
-      const parsed = CsvProcessor.parseCSV(String(response.data));
+      const parsed = CsvProcessor.parseCSV(String(response.data), ',');
       for (const values of parsed.data) {
         const record = this.record(parsed.headers, values);
         results.push({
@@ -130,7 +130,7 @@ export class SalesforceBulkApiLoader implements SalesforceDataLoader {
       const response = await client.get(`/jobs/ingest/${jobId}/failedResults`, {
         headers: { Accept: 'text/csv' },
       });
-      const parsed = CsvProcessor.parseCSV(String(response.data));
+      const parsed = CsvProcessor.parseCSV(String(response.data), ',');
       for (const values of parsed.data) {
         const record = this.record(parsed.headers, values);
         results.push({
@@ -176,7 +176,9 @@ export class SalesforceBulkApiLoader implements SalesforceDataLoader {
       );
       const csv = String(response.data ?? '');
       if (csv.trim()) {
-        const parsed = CsvProcessor.parseCSV(csv);
+        // Bulk API CSV is always comma-delimited. Pin it so a one-column result
+        // (no comma for PapaParse to detect) still parses.
+        const parsed = CsvProcessor.parseCSV(csv, ',');
         if (fieldNames.length === 0 && parsed.headers?.length) {
           fieldNames = parsed.headers;
         }
