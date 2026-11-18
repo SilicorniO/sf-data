@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Bulk API v2 queries that return a single column, such as `SELECT Id FROM Account`, parse correctly.
+
 ## 1.0.0
 
 First release of sf-data.

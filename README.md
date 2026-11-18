@@ -22,20 +22,20 @@ an input to later actions.
 
 ## Standalone executable
 
-Download the 1.0.0 binaries from the [v1.0.0 release](https://github.com/SilicorniO/sf-node-data-app/releases/tag/v1.0.0). Each file name includes the version. `SHA256SUMS` in that release lists the checksums.
+Download the 1.0.1 binaries from the [v1.0.1 release](https://github.com/SilicorniO/sf-node-data-app/releases/tag/v1.0.1). Each file name includes the version. `SHA256SUMS` in that release lists the checksums.
 
-- `sf-data-1.0.0-macos-arm64`
-- `sf-data-1.0.0-linux-x64`
-- `sf-data-1.0.0-win-x64.exe`
+- `sf-data-1.0.1-macos-arm64`
+- `sf-data-1.0.1-linux-x64`
+- `sf-data-1.0.1-win-x64.exe`
 
 Pass the downloaded file to the install script (or place the binary next to the script):
 
 ```bash
-./install-sfdata.sh /path/to/sf-data-1.0.0-macos-arm64
+./install-sfdata.sh /path/to/sf-data-1.0.1-macos-arm64
 ```
 
 ```powershell
-.\install-sfdata.ps1 C:\path\to\sf-data-1.0.0-win-x64.exe
+.\install-sfdata.ps1 C:\path\to\sf-data-1.0.1-win-x64.exe
 ```
 
 From this repository, after a local build ([Install from source](#install-from-source)), the same scripts find the unversioned binaries in `dist-exec/` (`sf-data-macos-arm64`, `sf-data-linux-x64`, `sf-data-win-x64.exe`):
@@ -55,7 +55,7 @@ sfdata --version
 sfdata --help
 ```
 
-`sfdata --version` prints the release (for 1.0.0, `1.0.0`). The short flag is `-V`. `-v` is reserved for CSV input files.
+`sfdata --version` prints the release (for 1.0.1, `1.0.1`). The short flag is `-V`. `-v` is reserved for CSV input files.
 
 `mlr` (Miller actions) and `sf` (Salesforce CLI org auth) are separate installs.
 
