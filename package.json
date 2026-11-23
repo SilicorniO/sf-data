@@ -1,0 +1,75 @@
+{
+  "name": "sf-data",
+  "version": "1.0.1",
+  "description": "SFNode Data app",
+  "preferGlobal": true,
+  "main": "./src/Index.js",
+  "bin": {
+    "sfdata": "./dist/Index.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build": "npm run build:cli && npm run build:web",
+    "build:cli": "npx tsc && node scripts/copy-ai.mjs",
+    "build:web": "node web/build.mjs",
+    "build:executables": "npm run build && pkg .",
+    "dev:web": "npm run build:web && npx serve dist/web -l 3001 --no-port-switching",
+    "ui": "npm run build && node dist/Index.js --ui"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/axios": "^0.9.36",
+    "@types/better-sqlite3": "^9.6.0",
+    "@yao-pkg/pkg": "^6.6.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/jsforce": "^1.11.5",
+    "@types/node": "^22.15.16",
+    "@types/papaparse": "^5.3.16",
+    "@types/xlsx": "^0.0.35",
+    "esbuild": "^0.28.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@dagrejs/dagre": "^3.1.1",
+    "axios": "^1.9.0",
+    "better-sqlite3": "^13.0.3",
+    "codemirror": "^6.0.2",
+    "commander": "^13.1.0",
+    "dotenv": "^16.5.0",
+    "js-yaml": "^4.1.0",
+    "jsforce": "^3.8.1",
+    "papaparse": "^5.5.2",
+    "xlsx": "^0.18.5",
+    "zod": "^4.5.4"
+  },
+  "overrides": {
+    "node-fetch": {
+      "whatwg-url": "^14.0.0"
+    }
+  },
+  "pkg": {
+    "scripts": [
+      "dist/**/*.js"
+    ],
+    "assets": [
+      "package.json",
+      "node_modules/axios/**/*",
+      "node_modules/better-sqlite3/prebuilds/**/*.node",
+      "config/**/*",
+      "data/**/*",
+      "dist/ai/**/*",
+      "dist/web/**/*"
+    ],
+    "targets": [
+      "node22-win-x64",
+      "node22-linux-x64",
+      "node22-macos-arm64"
+    ],
+    "outputPath": "dist-exec"
+  }
+}

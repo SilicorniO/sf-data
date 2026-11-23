@@ -1,0 +1,25 @@
+appConfiguration:
+  processingType: "api"
+  bulkApiMaxWaitSec: 300
+  bulkApiPollIntervalSec: 5
+  apiVersion: "63.0"
+
+actions:
+  - name: "Get Existing Opportunities"
+    type: "get"
+    outputSheet: "Existing Opportunities"
+    query: "SELECT Id, Name FROM Opportunity"
+
+  - name: "Resolve Opportunity IDs"
+    type: "transform"
+    inputSheet: "opportunities-update"
+    outputSheet: "opportunities-ready"
+
+  - name: "Update Opportunities"
+    type: "update"
+    object: "Opportunity"
+    inputSheet: "opportunities-ready"
+    fields:
+      - "Id"
+      - "StageName"
+      - "Amount"

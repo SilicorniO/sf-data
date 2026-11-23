@@ -1,0 +1,738 @@
+# sf-data
+
+`sf-data` runs ordered data pipelines between CSV/Excel sheets and Salesforce. Each
+entry in `actions` performs exactly one operation:
+
+![Pipeline actions for Accounts, Contacts, and Opportunities](docs/images/actions.png)
+
+- `get`: run SOQL and create/replace a CSV sheet
+- `insert`: insert CSV rows
+- `update`: update rows by `Id`
+- `upsert`: upsert rows by an external-ID field
+- `delete`: delete rows by `Id`
+- `transform`: run a JavaScript function for each CSV row
+- `merge`: join two sheets on a key field, locally (no Salesforce)
+- `check`: run a JavaScript assertion over one or more sheets (no Salesforce)
+- `miller`: transform CSV sheets with [Miller](https://miller.readthedocs.io) (`mlr`), locally (no Salesforce)
+- `table`: load a sheet into a SQLite table (real column names, optional renames/types), locally (no Salesforce)
+- `sql`: run a read-only SQL query over `table`-created tables into a new sheet, locally (no Salesforce)
+
+Actions run sequentially in YAML order. Every output is immediately available as
+an input to later actions.
+
+## Standalone executable
+
+Download the 1.0.1 binaries from the [v1.0.1 release](https://github.com/SilicorniO/sf-data/releases/tag/v1.0.1). Each file name includes the version. `SHA256SUMS` in that release lists the checksums.
+
+- `sf-data-1.0.1-macos-arm64`
+- `sf-data-1.0.1-linux-x64`
+- `sf-data-1.0.1-win-x64.exe`
+
+Pass the downloaded file to the install script (or place the binary next to the script):
+
+```bash
+./install-sfdata.sh /path/to/sf-data-1.0.1-macos-arm64
+```
+
+```powershell
+.\install-sfdata.ps1 C:\path\to\sf-data-1.0.1-win-x64.exe
+```
+
+From this repository, after a local build ([Install from source](#install-from-source)), the same scripts find the unversioned binaries in `dist-exec/` (`sf-data-macos-arm64`, `sf-data-linux-x64`, `sf-data-win-x64.exe`):
+
+```bash
+./scripts/install-sfdata.sh
+```
+
+```powershell
+.\scripts\install-sfdata.ps1
+```
+
+Then, in a new terminal, from any folder:
+
+```bash
+sfdata --version
+sfdata --help
+```
+
+`sfdata --version` prints the release (for 1.0.1, `1.0.1`). The short flag is `-V`. `-v` is reserved for CSV input files.
+
+`mlr` (Miller actions) and `sf` (Salesforce CLI org auth) are separate installs.
+
+## Start a project
+
+From an empty folder (or any folder you want to use as the project):
+
+```bash
+sfdata init
+```
+
+That creates, only when each path is missing:
+
+- `input/` and `output/`
+- `conf.yaml` and `scripts.js`
+- `AI_GUIDE.md`
+- `skills/build-config/` and `skills/build-script/`
+
+Running `init` again skips anything that already exists, so hand-edited files are
+left as they are. Put CSV and Excel inputs in `input/`, then start the builder
+from that same folder:
+
+```bash
+sfdata --ui
+```
+
+## Configuration builder (`--ui`)
+
+Start the builder from the project folder. It is served by a local daemon; opening
+the HTML file directly does not work.
+
+```bash
+sfdata --ui                 # http://localhost:3111
+sfdata --ui --port 4000     # or PORT=4000 sfdata --ui
+```
+
+The daemon uses **the folder where the command was executed** as its working
+folder. During development, `npm run ui` builds first and then starts the daemon.
+`npm run` reports the repo root as the process directory, so the daemon falls
+back to `INIT_CWD` — the folder you invoked `npm run ui` from. Open the printed
+`http://localhost:<port>` URL. The page is same-origin with the daemon, so no
+CORS setup is needed. `--ui` does not require `--confFile`; only `--port` matters.
+`init` is the other mode that does not require `--confFile`. Any other invocation
+is a one-shot pipeline run.
+
+If the folder already contains `conf.yaml` (and optionally `scripts.js`), the
+builder loads them on open. Those files take precedence over any autosaved
+browser draft.
+
+The builder has five tabs:
+
+- **App** — processing type, API version, bulk and cleanup settings.
+- **Sheets** — header discovery from the files already in `input/`, plus **Load
+  CSV / Excel** to read headers from files you pick. Translation of a header to
+  a Salesforce API name is opt-in.
+- **Actions** — typed forms for every action (`get`, `insert`, `update`,
+  `upsert`, `delete`, `transform`, `merge`, `check`, `miller`, `table`, `sql`),
+  sheet-aware pickers, drag-and-drop reordering, and a syntax-highlighted
+  CommonJS editor for `transform` and `check` functions. **Reset to template**
+  fills in the function for the selected sheet.
+- **Diagram** — a left-to-right timeline of sheets and actions (Salesforce reads
+  and writes, `transform`, `merge`, `check`, and `miller`). Pan, zoom, and click
+  a sheet or arrow for a read-only detail panel.
+- **Run** — execute the pipeline in this folder.
+
+Application settings: processing type and API version.
+
+![Application settings](docs/images/app.png)
+
+Sheet mappings from input columns to Salesforce API names.
+
+![Sheet mappings for Contacts and Opportunities](docs/images/sheets.png)
+
+Ordered actions for Accounts, Contacts, and Opportunities.
+
+![Pipeline actions](docs/images/actions.png)
+
+The same pipeline as a diagram. Pan, zoom, and select a sheet or arrow for details.
+
+![Pipeline diagram](docs/images/diagram.png)
+
+Run the pipeline in this folder. Authentication can be a pasted token, and From / To limit the action range.
+
+![Run pipeline](docs/images/run.png)
+
+**Save** writes `conf.yaml` into the working folder, and writes `scripts.js` when
+the pipeline has a `transform` or `check` action. Validation uses the same schema
+as the CLI. The browser draft is saved locally; **Reset** asks for confirmation
+before clearing it.
+
+Open the **Run** tab to execute the current configuration:
+
+- Authentication is resolved from the local environment, in order:
+  1. a usable credential in a `.env` file in the daemon's folder,
+  2. an authorized Salesforce CLI org (pick one from the **org picker**; a fresh
+     access token is fetched for it at run time),
+  3. a **pasted** bearer token + instance URL (also used when a picked org's token
+     is expired or the CLI is unavailable). Pasted credentials are kept only for the
+     browser session and are never written to disk.
+- Optional **From / To** pickers run a partial range (same as `--fromTask` /
+  `--toTask`).
+- On Run, the daemon writes `conf.yaml` (and `scripts.js` when a `transform` or
+  `check` action exists) and runs the CLI with `--inputFolder ./input
+  --outputFolder ./output`. Place inputs in `input/`. Results are written to
+  `output/`. Only one run executes at a time; **Stop** cancels the run in progress.
+- The builder streams the CLI's six-phase log live, then shows a success, stopped,
+  or failure summary and the list of produced output files with row counts. Output
+  CSVs stay on disk in `output/` (they can be large, so their contents are not
+  sent back to the browser).
+
+## Run a pipeline
+
+With `sfdata` on `PATH`:
+
+```bash
+sfdata \
+  --confFile examples/02-insert-contacts/conf.yaml \
+  --scriptFile examples/02-insert-contacts/scripts.js \
+  --csvFiles examples/02-insert-contacts/contacts.csv \
+  --outputFolder output
+```
+
+The same command from a source checkout, without installing the binary:
+
+```bash
+npx ts-node src/Index.ts \
+  --confFile examples/02-insert-contacts/conf.yaml \
+  --scriptFile examples/02-insert-contacts/scripts.js \
+  --csvFiles examples/02-insert-contacts/contacts.csv \
+  --outputFolder output
+```
+
+If the pipeline has any `transform` or `check` action, pass the shared CommonJS script
+with `--scriptFile` (`-s`). It is resolved relative to the current working directory and
+is required only when a transform or check exists; the YAML no longer references it.
+
+To run only part of a pipeline, pass `--fromTask` and/or `--toTask` with an action
+name (case-insensitive) or a 1-based YAML index. The range is inclusive.
+
+```bash
+# From "Insert Contacts" through the last action
+sfdata -c conf.yaml --fromTask "Insert Contacts"
+
+# From the first action through "Get Accounts"
+sfdata -c conf.yaml --toTask "Get Accounts"
+
+# A middle slice, by name or by index
+sfdata -c conf.yaml --fromTask 2 --toTask "Insert Contacts"
+```
+
+From a source checkout, the same flags work with `npx ts-node src/Index.ts` in place of `sfdata`.
+
+If only `--toTask` is set, execution starts at the first action. If only
+`--fromTask` is set, execution continues through the last action. Skipped
+actions do not run, so later steps must already have the sheets they need
+(from input files or a previous run's output CSVs).
+
+Inputs can be multiple CSV files, one or more Excel workbooks, or both. An Excel
+worksheet is treated as one logical CSV sheet. All generated files are CSV.
+
+Instead of listing every file, pass `--inputFolder` (`-i`) to read every CSV and
+Excel file in a folder (non-recursively). It can be combined with `--csvFiles`
+and `--excelFile`; all resolved inputs are merged.
+
+```bash
+sfdata \
+  --confFile examples/02-insert-contacts/conf.yaml \
+  --inputFolder examples/02-insert-contacts \
+  --outputFolder output
+```
+
+A project created with `sfdata init` uses the same layout the builder runs:
+
+```bash
+sfdata -c conf.yaml -s scripts.js -i ./input -o ./output
+```
+
+Sheet names come from file names (worksheet names for Excel), so two inputs that
+resolve to the same sheet name are rejected with an error.
+
+Input sheets are read lazily to keep memory bounded on large pipelines: a CSV
+file or Excel worksheet is loaded only when an action first needs it, and is
+released once the last action that uses it has run. Each output sheet is written
+to CSV the moment its action produces it, rather than accumulating every sheet
+until the end. Field mappings are applied to a sheet as it loads.
+
+A transform can still read another sheet at runtime with `context.lookup` /
+`lookupAll`; a file-backed sheet that was already released is reloaded from disk
+on demand, and sheets produced in-memory (from `get`, `merge`, or another
+transform) are kept until the last transform in the run has executed.
+
+Because inputs are released after use, a raw input sheet is no longer echoed to
+the output folder unless an action reads and re-emits it.
+
+Execution is reported as six explicit phases:
+
+1. Load and validate the YAML configuration.
+2. Optionally clean the output folder or previous error files.
+3. Index the input CSV files and Excel worksheets (sheets load on first use).
+4. Prepare field mappings and authentication.
+5. Precheck and execute the selected action range sequentially in YAML order,
+  writing each produced sheet as CSV as soon as it is ready.
+6. Flush any sheets still resident in memory as CSV.
+
+If an action fails at runtime, sheets already produced were written as they
+completed, and phase 6 still flushes what remains, so successful intermediate
+results and error sheets are not lost. Configuration and transform-script
+precheck failures stop before any output is written.
+
+## Authentication
+
+Salesforce CLI active org:
+
+```bash
+sf config set target-org=my-org-alias
+```
+
+When no environment credentials are present, the CLI automatically resolves the
+active org access token and instance URL with `sf org display --json` and
+`sf org auth show-access-token --json`. Authentication is independent of
+`processingType` and is verified before the first pipeline action executes.
+
+Bearer token:
+
+```bash
+export SF_ACCESS_TOKEN="..."
+export SF_INSTANCE_URL="https://your-domain.my.salesforce.com"
+```
+
+Client credentials:
+
+```bash
+export SF_CLIENT_ID="..."
+export SF_CLIENT_SECRET="..."
+export SF_INSTANCE_URL="https://your-domain.my.salesforce.com"
+```
+
+
+
+## Configuration
+
+```yaml
+appConfiguration:
+  processingType: api
+  bulkApiMaxWaitSec: 300
+  bulkApiPollIntervalSec: 5
+  apiVersion: "63.0"
+
+sheets:
+  - name: contacts
+    fields:
+      - name: Account Name
+        apiName: AccountId
+
+actions:
+  - type: get
+    name: Get Accounts
+    outputSheet: Accounts
+    query: SELECT Id, Name FROM Account
+
+  - type: transform
+    name: Resolve Contact Accounts
+    inputSheet: contacts
+    outputSheet: contacts-ready
+
+  - type: insert
+    name: Insert Contacts
+    object: Contact
+    inputSheet: contacts-ready
+    outputSheet: Inserted Contact IDs
+    fields: [FirstName, LastName, Email, AccountId]
+```
+
+Only this schema is accepted. Old compound entries such as `exportAction`,
+`transformAction`, `importAction`, `copySheetAction`, and the `objectsConf` key
+are invalid.
+
+### Application settings
+
+- `processingType`: `api` for synchronous Query API and sObject Collections
+(default), `bulk` for Bulk API v2, or `auto` to pick the best method per action
+based on record count. Authentication is selected separately: environment
+credentials take precedence, with Salesforce CLI as fallback.
+- `autoBulkThreshold`: record-count cutover used by `auto` (default `10000`).
+An action at or above this count uses Bulk API v2; below it, the synchronous
+API. For GET actions `auto` first runs a lightweight `SELECT COUNT()`; queries
+that cannot be rewritten to a count (aggregates, `GROUP BY`, `LIMIT`) stay on
+the synchronous API.
+- `bulkApiMaxWaitSec`: optional Bulk job timeout; default is 300 at runtime
+- `bulkApiPollIntervalSec`: optional Bulk polling interval; default is 5
+- `apiVersion`: Salesforce API version; defaults to `58.0` (the bundled examples pin
+`63.0`)
+- `queryApiBatchSize`: REST Query API page size (200–2000, default `2000`).
+Synchronous GET actions use this setting, but Salesforce can still reduce
+pages (for example to 250 rows). Bulk GET downloads CSV pages of up to 50,000
+rows; if compound fields are rejected, it falls back to synchronous GET.
+- `cleanOutputFolderBeforeExecution`: recursively delete existing output-folder
+contents before loading inputs; defaults to `false`
+- `deleteErrorFilesBeforeExecution`: delete existing `*-errors.csv` files and
+configured custom error-sheet CSVs; defaults to `false` and is redundant when
+full cleanup is enabled
+
+For safety, full cleanup refuses the filesystem root, home directory, current
+working directory, any parent of the current working directory, or a folder
+containing the selected YAML/CSV/Excel inputs. Use a dedicated output subfolder.
+
+### Sheet mappings
+
+The optional `sheets` section translates headers on initially loaded CSV/Excel
+sheets. After this initial translation, actions and scripts use only the real
+field/API names.
+
+Sheet lookup is case-insensitive. The spelling used when a sheet is first created
+is retained for its output filename. Inputs whose names differ only by case are
+rejected.
+
+### Common action fields
+
+All action types support:
+
+- `type`: required lowercase action type
+- `name`: required; unique ignoring case
+- `waitBeforeSeconds`: optional delay, default `0`
+- `continueOnError`: optional, default `false`
+- `errorSheet`: optional logical name, default `<name>-errors`
+- `errorRows`: `errors` or `all`, default `errors`
+
+Logical action/sheet names cannot contain path separators, `..`, or control
+characters.
+
+An error sheet is created only if an error occurs. Row errors preserve the row
+shape and append `_ErrorMessage`. With `errorRows: all`, all rows are included
+and successful rows have a blank error message.
+
+Fatal errors (authentication, query, missing input, invalid runtime schema) always
+stop the pipeline and create one error row. Row errors finish the current action;
+`continueOnError` controls whether the next action runs. Accepted row errors
+produce a warning but exit with status 0.
+
+## Action reference
+
+
+
+### GET
+
+```yaml
+- type: get
+  name: Get Accounts
+  outputSheet: Accounts
+  query: SELECT Id, Name FROM Account
+```
+
+GET has no sheet input: SOQL is its source. It atomically replaces the output
+sheet. A successful query with no records creates an empty sheet with headers
+derived from the SELECT list. With `processingType: api`, GET uses the
+synchronous Query API and requests `queryApiBatchSize` rows per page, although
+Salesforce can return fewer. With `processingType: bulk`, GET uses a Bulk API v2
+Query job and downloads CSV results in pages of up to 50,000 rows. If Salesforce
+rejects compound fields in Bulk Query, GET logs a warning and automatically
+retries through the synchronous Query API.
+
+### INSERT
+
+```yaml
+- type: insert
+  name: Insert Accounts
+  object: Account
+  inputSheet: accounts
+  outputSheet: Inserted Account IDs
+  fields: [Name, Phone]
+```
+
+`fields` is optional. When omitted, every input field is used, including `Id`.
+An explicit list must not contain `Id`; unselected input columns are ignored.
+
+`outputSheet` is optional. When present, it is replaced with successful
+`_InputRow,Id` mappings; `_InputRow` starts at 1 for the first data row. It may
+equal `inputSheet`, in which case the input is intentionally replaced. When
+omitted, returned IDs are discarded.
+
+### UPDATE
+
+```yaml
+- type: update
+  name: Update Accounts
+  object: Account
+  inputSheet: accounts-ready
+  fields: [Id, Phone, Industry]
+```
+
+When `fields` is omitted, every input field is used. An explicit list must contain
+`Id`. The input sheet must contain `Id`, and rows with blank IDs are errors.
+UPDATE does not accept `outputSheet`.
+
+### UPSERT
+
+```yaml
+- type: upsert
+  name: Upsert Accounts
+  object: Account
+  inputSheet: accounts
+  externalIdField: External_Id__c
+  fields: [External_Id__c, Name, Phone]
+```
+
+When `fields` is omitted, every input field is used. An explicit list must contain
+`externalIdField`. The input sheet must contain that field, and rows with a blank
+external ID are errors. UPSERT does not accept `outputSheet`.
+
+The HTML action editor's **Clear fields** control enables all-fields mode and
+causes the `fields` property to be omitted from generated YAML. Fields can also
+be added in bulk by pasting a header row copied from Excel (tab-separated) or
+CSV (comma/semicolon-separated); duplicates are removed automatically.
+
+### DELETE
+
+```yaml
+- type: delete
+  name: Delete Accounts
+  object: Account
+  inputSheet: account-ids
+```
+
+DELETE sends only `Id` and does not accept `fields` or `outputSheet`. Rows with a
+blank ID are errors.
+
+### TRANSFORM
+
+```yaml
+- type: transform
+  name: Resolve Account IDs
+  inputSheet: contacts
+  outputSheet: contacts-ready
+```
+
+Every transform function lives in one shared CommonJS module passed on the command line
+with `--scriptFile` (`-s`), a trusted path resolved against the current working directory.
+The module exports an object keyed by each transform action's `name`:
+
+```js
+// scripts.js
+module.exports = {
+  'Resolve Account IDs': function (row, { lookup, lookupAll }) {
+    const account = lookup('Accounts', 'Name', row.AccountId);
+    if (!account) throw new Error(`Unknown account: ${row.AccountId}`);
+    row.AccountId = account.Id;
+    delete row.LegacyColumn;
+    return row;
+  },
+};
+```
+
+The shared file is loaded once and may `require()` sibling modules to share logic.
+
+In the configuration builder, each transform action edits its own function in a
+syntax-highlighted editor. **Reset to template** replaces it with the required
+CommonJS function documenting fields from the selected input sheet. **Save** writes
+`conf.yaml` and the shared `scripts.js`; opening the builder in a folder that
+already has those files reloads each transform by action name. The edited source
+is kept in the local browser draft and is deliberately not embedded in YAML.
+
+The script receives a mutable dictionary whose keys are mapped/API field names.
+It can add, change, or delete fields. Return the full row (the same object or a
+replacement), or `null` to omit the row. Returned values are converted to
+strings, and output columns are the union of returned keys in first-seen order.
+
+`lookup(sheetName, matchField, value)` returns the first exact string match or
+`undefined`. `lookupAll` returns every exact match. Lookup rows are copies.
+
+The shared script file is loaded before the first action. A missing file, a missing
+key for a transform action, or a non-function value is a configuration preflight
+failure: no actions or output generation occur.
+Exceptions thrown per row are caught and written to the action error sheet using
+the partially transformed row. The destination is replaced only after processing
+completes.
+
+Configured scripts run as normal trusted Node.js modules and can access Node APIs.
+Only run configuration and scripts you trust.
+
+### MERGE
+
+```yaml
+- type: merge
+  name: Merge Data
+  primarySheet: base
+  secondarySheet: extra
+  outputSheet: merged
+  idField: Id
+```
+
+MERGE joins two in-memory sheets on `idField`, entirely locally — no Salesforce call and
+no credentials. `secondarySheet` must differ from `primarySheet`. Output columns are all
+primary columns followed by any columns only the secondary sheet has. Rows are matched by
+`idField`; where both sides have a value, the **primary** non-empty cell wins. Secondary
+rows with no matching id (and rows with a blank id) are appended unchanged. A duplicate id
+within either sheet is an error.
+
+### CHECK
+
+```yaml
+- type: check
+  name: Enough Employees
+  inputSheets: [employees]
+  continueOnError: false
+```
+
+CHECK runs a JavaScript assertion over one or more sheets and produces no output sheet. It
+is offline — no Salesforce credentials are needed. Like `transform`, its function lives in
+the shared `--scriptFile` module, keyed by the action `name`, and receives its declared
+`inputSheets`:
+
+```js
+// scripts.js
+module.exports = {
+  'Enough Employees': function (sheets) {
+    return sheets['employees'].data.length > 3;
+  },
+};
+```
+
+Each sheet is a `DataSheet` — `{ name, fieldNames, data }` — where `data` is an array of
+rows and each row is an **array of string cells**; access a column positionally with
+`fieldNames.indexOf('Column')`. The function also receives the shared `lookup` /
+`lookupAll` context. It must return a boolean; any other return value is a fatal error.
+
+Returning `false` writes a single-row error sheet (`<name>-errors`) and stops the
+pipeline, unless the action sets `continueOnError: true`, in which case later actions
+still run.
+
+### MILLER
+
+```yaml
+- type: miller
+  name: Sort Employees By Salary
+  inputSheets: [employees]
+  outputSheet: employees-sorted
+  command: "sort -nr Salary"
+```
+
+MILLER transforms CSV sheets with [Miller](https://miller.readthedocs.io) (`mlr`),
+entirely locally — no Salesforce credentials. `mlr` must be installed and on `PATH`;
+its absence is a configuration preflight failure.
+
+`command` is the Miller **verb chain only**. The app runs
+`mlr --csv <command> <input file(s)>` and captures the CSV Miller writes to stdout as
+`outputSheet`, so you must **not** include `mlr`, `--csv`, or raw file paths — those are
+supplied for you. The command is tokenized in-process (respecting single/double quotes)
+and passed to Miller as an argv array; it is never run through a shell. Example with a
+quoted DSL expression and a chained verb:
+
+```yaml
+  command: "filter '$Department == \"Engineering\"' then cut -f FirstName,LastName,Salary"
+```
+
+Each input sheet is materialized to a temporary CSV. Inputs are appended to Miller in the
+order listed, **unless** you reference one mid-command with a `{{sheetName}}` placeholder,
+which the app replaces with that input's CSV path — inputs you don't reference are still
+appended in order. This is how join-style verbs work, where one input must be named by
+Miller's `-f` flag (the left file) and the other is streamed as the trailing input (the
+right file):
+
+```yaml
+- type: miller
+  name: Join Contacts To Accounts
+  inputSheets: [accounts, contacts]   # accounts = left (via -f), contacts = streamed right
+  outputSheet: joined
+  command: "join -j AccountId -f {{accounts}}"
+```
+
+A placeholder must name one of `inputSheets` (matched case-insensitively) or the config
+fails to parse. Miller either transforms the whole file or fails; a non-zero exit surfaces
+Miller's stderr and writes the action's fatal error sheet. Because it is offline, MILLER
+never triggers Salesforce authentication.
+
+### TABLE
+
+```yaml
+- type: table
+  name: Index Employees
+  inputSheet: employees
+  columns:
+    - { source: "First Name", name: first_name }  # rename
+    - { source: Salary, type: INTEGER }            # typed column
+```
+
+TABLE loads a sheet into a SQLite table so it can be queried with `sql` and joined by
+`merge`/`lookup` without holding the whole sheet in memory (a table streamed from a CSV
+handles files larger than RAM). It produces **no output sheet** — its effect is the
+table.
+
+The table is named after `inputSheet`, and its columns are the sheet's real field
+names. `columns` is optional; list only the fields you want to change. `source` is the
+field name in the sheet, `name` renames it in the table, and `type` sets the SQLite
+storage type (`TEXT` (default), `INTEGER`, `REAL`, or `NUMERIC`). A correct numeric type
+matters so `sql` comparisons and `ORDER BY` sort numerically rather than as text. Fields
+not listed keep their name and default to `TEXT`. A rename that collides with another
+column (ignoring case) or an unknown type is a preflight/validation failure.
+
+Tables are created in a `work.sqlite` database under a `.sfdata-cache/` folder next to
+the config. That database is **kept after the run** so you can open it in any SQLite
+client (the path is printed when the pipeline finishes); the folder is gitignored.
+Re-running a `table` action for a sheet (or producing that sheet again) drops and
+recreates just that table, so existing data is always replaced. The one exception is a
+run with **Clean output folder before execution** enabled: it starts from a fresh
+database and removes the cache when it ends. Because it is offline, TABLE never triggers
+Salesforce authentication.
+
+### SQL
+
+```yaml
+- type: sql
+  name: Headcount By Department
+  inputSheets: [employees]
+  outputSheet: department-summary
+  query: >
+    SELECT "Department", COUNT(*) AS "Headcount"
+    FROM employees
+    GROUP BY "Department"
+```
+
+SQL runs a **read-only** query (must begin with `SELECT` or `WITH`) against tables
+created by earlier `table` actions and stores the result as `outputSheet`. Reference a
+table by its sheet name and its real column names (quote identifiers that contain spaces
+or reserved words). Every sheet in `inputSheets` must already have a `table`; otherwise
+the action fails telling you which. Result columns become the output sheet's fields and
+every value is stored as text (SQL `NULL` becomes an empty string). Because it is
+offline, SQL never triggers Salesforce authentication.
+
+## Output and failures
+
+All in-memory sheets—including untouched inputs, generated outputs, and created
+error sheets—are written to the output folder. Existing CSV files are replaced.
+
+If a runtime action fails, sheets produced so far are still written, then the CLI
+exits non-zero. YAML validation and transform preflight failures exit non-zero
+without writing CSV files.
+
+See `[examples/](examples/)` for runnable configurations.
+
+## AI assistance
+
+To have an AI build a configuration for you, point it at [ai/AI_GUIDE.md](ai/AI_GUIDE.md)
+— a terse, complete spec of the config schema, the transform/check script contract, the
+folders, and the CLI.
+
+The [ai/skills/](ai/skills/) folder bundles two Claude Code skills:
+
+- **build-config** — author or edit a `conf.yaml`.
+- **build-script** — author the shared `scripts.js` (transform and check functions).
+
+Claude Code only auto-discovers skills under `.claude/skills/`, so these are not loaded by
+default. To use them, either start Claude Code with `--add-dir ai/skills`, or copy the
+skill folders into `.claude/skills/`.
+
+## Install from source
+
+```bash
+npm install
+npm run build
+```
+
+Build the standalone binaries, then install the one for this machine:
+
+```bash
+npm run build:executables
+./scripts/install-sfdata.sh
+```
+
+```powershell
+npm run build:executables
+.\scripts\install-sfdata.ps1
+```
+
+To use the Node build instead of the binary:
+
+```bash
+npm link
+```
+
+`npm run ui` builds the CLI and the configuration builder, then starts the builder.

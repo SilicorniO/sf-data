@@ -1,0 +1,47 @@
+appConfiguration:
+  processingType: "bulk"
+  bulkApiMaxWaitSec: 300
+  bulkApiPollIntervalSec: 5
+  apiVersion: "63.0"
+
+# The Opportunities sheet in the Excel file has an "AccountId" column that holds
+# the Account Name. The sheet mapping declares it so the field is treated as AccountId
+# by the rest of the pipeline.
+sheets:
+  - name: "Opportunities"
+    fields:
+      - name: "AccountId"
+        apiName: "AccountId"
+
+actions:
+  # Step 1: Get all Accounts from Salesforce to resolve AccountId values.
+  - name: "Get Accounts"
+    type: "get"
+    outputSheet: "Accounts"
+    query: "SELECT Id, Name FROM Account"
+
+  # Step 2: Get existing Opportunities into a separate lookup sheet.
+  - name: "Get Existing Opportunities"
+    type: "get"
+    outputSheet: "Existing Opportunities"
+    query: "SELECT Id, Name FROM Opportunity"
+
+  # Step 3: Remove existing records and resolve AccountId values.
+  - name: "Prepare New Opportunities"
+    type: "transform"
+    inputSheet: "Opportunities"
+    outputSheet: "Opportunities To Insert"
+
+  # Step 4: Insert only the transformed new rows.
+  - name: "Insert Opportunities"
+    type: "insert"
+    object: "Opportunity"
+    inputSheet: "Opportunities To Insert"
+    outputSheet: "Inserted Opportunity IDs"
+    fields:
+      - "Name"
+      - "AccountId"
+      - "StageName"
+      - "CloseDate"
+      - "Amount"
+      - "Description"
